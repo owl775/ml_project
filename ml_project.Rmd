@@ -1,0 +1,86 @@
+---
+title: "Machine Learning Project"
+output:
+  pdf_document 
+fontsize: 8pt
+geometry: margin=0.75in
+header-includes:
+       - \usepackage{setspace}\singlespacing
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE)
+#knitr::opts_chunk$set(fig.width=8, fig.height=4) 
+library(ggplot2)
+library(dplyr)
+library(caret)
+library(randomForest)
+library(e1071)
+library(naivebayes)
+library(gbm)
+```
+
+## Executive Summary
+Data was obtained from the Human Activity Recognition dataset. It includes sensor data collected when six participants performed one set of 10 repetitions of Unilateral Dumbell Biceps curl in 5 ways. Sensor locations were belt, glove, arm, and dumbbell. The classes are as follows: Class A =  exactly as specified, Class B = throwing elbows to the front, Class C = lifting the dumbbell only halfway, Class D = lowering the dumbbell only halfway, Class E = throwing the hips to the front. The purpose of this exercise was to create a model to predict the class from the remaining data.
+
+
+## Getting and Cleaning Data
+```{r data cleaning, echo=TRUE, cache= TRUE}
+training_data_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testing_data_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(training_data_url, destfile="train_dataset.csv")
+download.file(testing_data_url, destfile="test_dataset.csv")
+
+train_data <- read.csv("train_dataset.csv", na.strings=c('#DIV/0!', '', 'NA'))
+test_data <- read.csv("test_dataset.csv", na.strings=c('#DIV/0!', '', 'NA'))
+
+# start with test data to see what data is available
+not_all_na <- function(x) {!all(is.na(x))}
+clean_test_data <- test_data %>% select_if(not_all_na)
+
+# remove first 7 columns (not accelerometer data)
+clean_test_data <- clean_test_data[,-c(1:7)]
+
+# choose columns 1:52 for use in training rf model ('problem_id' is not relevant)
+columns_to_use <- names(clean_test_data)[1:52]
+
+# select columns from training data 
+clean_train_data <- train_data[, c(columns_to_use,"classe")]
+
+```
+# Building the models
+```{r caret_models, cache= TRUE}
+# Test with 50% training 50% testing data
+
+inTrain <- createDataPartition(y=clean_train_data$classe, p=0.5, list=FALSE)
+training <- clean_train_data[inTrain,]
+testing <- clean_train_data[-inTrain,]
+
+# try a simple model with naive bayes
+modelFit_nb <- train(classe ~ ., method="naive_bayes", data=training)
+test_predictions_nb <- predict(modelFit_nb, testing[,-53])
+confusionMatrix(testing$classe, test_predictions_nb)
+
+# Accuracy is not great, try gbm method to see if it improves accuracy
+ctrl <- trainControl(method = "cv", number=10)
+modelFit_gbm <- train(classe ~ ., method="gbm",data=training, trControl=ctrl, verbose=FALSE)
+test_predictions_gbm <- predict(modelFit_gbm, testing[,-53])
+confusionMatrix(testing$classe, test_predictions_gbm)
+
+# Output from gbm looks promising, proceed with predicting 20 new classes for the test data set.
+print(modelFit_gbm)
+```
+# Predictions
+```{r predictions, cache= TRUE}
+
+# select columns from test that were used in training 
+clean_test_data <- test_data[, c(columns_to_use, 'problem_id')]
+
+test_predictions_gbm <- predict(modelFit_gbm, clean_test_data[,-53])
+
+test_predictions_gbm
+
+
+```
